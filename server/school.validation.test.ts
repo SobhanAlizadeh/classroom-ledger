@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
+import { distributeTeamPoints } from "./db";
 import type { TrpcContext } from "./_core/context";
 
 function caller() {
@@ -12,15 +13,31 @@ function caller() {
 }
 
 describe("school input contracts", () => {
+  it("preserves the total when distributing positive team points", () => {
+    const shares = distributeTeamPoints(7, 3);
+    expect(shares).toEqual([3, 2, 2]);
+    expect(shares.reduce((sum, value) => sum + value, 0)).toBe(7);
+  });
+
+  it("preserves the total when distributing negative team points", () => {
+    const shares = distributeTeamPoints(-7, 3);
+    expect(shares).toEqual([-3, -2, -2]);
+    expect(shares.reduce((sum, value) => sum + value, 0)).toBe(-7);
+  });
+
   it("rejects invalid dates for daily activity records", async () => {
     await expect(caller().school.activity({ studentId: 1, date: "17/09/2026", title: "همکاری", kind: "positive", points: 2 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("rejects grades without a title or with a score above the maximum", async () => {
+  it("rejects invalid dates for team activity records", async () => {
+    await expect(caller().school.teamActivity({ teamId: 1, date: "17/09/2026", title: "همکاری تیمی", kind: "positive", points: 6 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects grades without a title or with an invalid score", async () => {
     await expect(caller().school.grade({ studentId: 1, title: "", score: 21, maxScore: 20, date: "2026-09-17" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("accepts the supported attendance statuses at the schema boundary", async () => {
+  it("accepts only supported attendance statuses at the schema boundary", async () => {
     await expect(caller().school.attendance({ studentId: 1, date: "2026-09-17", status: "unknown" as "present" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
