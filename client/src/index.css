@@ -176,3 +176,9 @@
     }
   }
 }
+
+@media print {
+  body * { visibility: hidden !important; }
+  #print-report, #print-report * { visibility: visible !important; }
+  #print-report { position: absolute; inset: 0; width: 100%; box-shadow: none !important; border: 0 !important; }
+}
