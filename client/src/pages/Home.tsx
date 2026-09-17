@@ -1,33 +1,87 @@
+import { useMemo, useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CalendarDays, Check, ClipboardList, Medal, Plus, School, Sparkles, TrendingDown, TrendingUp, Users, X } from "lucide-react";
+import { toast } from "sonner";
 
-/**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Workflow, Frontend Best Practices, Design Guide and Common Pitfalls
- */
+const today = new Date().toISOString().slice(0, 10);
+const faDate = new Intl.DateTimeFormat("fa-IR", { weekday: "long", day: "numeric", month: "long" });
+
 export default function Home() {
-  // The useAuth hook provides authentication state.
-  // To implement login/logout, call logout(), or start login from an event
-  // handler: onClick={() => startLogin()} (imported from "@/const"). Never call
-  // startLogin() during render (no href={startLogin()}) — it mints a one-time
-  // nonce cookie and must run only at the moment of navigation.
-  let { user, loading, error, isAuthenticated, logout } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { data, isLoading } = trpc.school.dashboard.useQuery(undefined, { enabled: Boolean(user) });
+  const utils = trpc.useUtils();
+  const [selectedClass, setSelectedClass] = useState("all");
+  const [date, setDate] = useState(today);
+  const [studentId, setStudentId] = useState("");
+  const [activityKind, setActivityKind] = useState<"positive" | "negative" | "neutral">("positive");
+  const [activityTitle, setActivityTitle] = useState("");
+  const [points, setPoints] = useState("+2");
+  const [gradeTitle, setGradeTitle] = useState("");
+  const [score, setScore] = useState("");
+  const [maxScore, setMaxScore] = useState("20");
+  const [className, setClassName] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [studentFirstName, setStudentFirstName] = useState("");
+  const [studentLastName, setStudentLastName] = useState("");
+  const [studentClassId, setStudentClassId] = useState("");
+  const [studentTeamId, setStudentTeamId] = useState("none");
 
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+  const addAttendance = trpc.school.attendance.useMutation({ onSuccess: () => { toast.success("حضور و غیاب ثبت شد"); utils.school.dashboard.invalidate(); } });
+  const addActivity = trpc.school.activity.useMutation({ onSuccess: () => { toast.success("رویداد و امتیاز ثبت شد"); setActivityTitle(""); utils.school.dashboard.invalidate(); } });
+  const addGrade = trpc.school.grade.useMutation({ onSuccess: () => { toast.success("نمره ثبت شد"); setGradeTitle(""); setScore(""); utils.school.dashboard.invalidate(); } });
+  const addClass = trpc.school.addClass.useMutation({ onSuccess: () => { toast.success("کلاس ساخته شد"); setClassName(""); utils.school.dashboard.invalidate(); } });
+  const addTeam = trpc.school.addTeam.useMutation({ onSuccess: () => { toast.success("تیم ساخته شد"); setTeamName(""); utils.school.dashboard.invalidate(); } });
+  const addStudent = trpc.school.addStudent.useMutation({ onSuccess: () => { toast.success("دانش‌آموز اضافه شد"); setStudentFirstName(""); setStudentLastName(""); utils.school.dashboard.invalidate(); } });
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
-    </div>
-  );
+  const students = data?.students ?? [];
+  const visibleStudents = selectedClass === "all" ? students : students.filter(s => String(s.classId) === selectedClass);
+  const visibleIds = useMemo(() => new Set(visibleStudents.map(s => s.id)), [visibleStudents]);
+  const todaysAttendance = (data?.attendance ?? []).filter(a => a.date === date && visibleIds.has(a.studentId));
+  const presentCount = todaysAttendance.filter(a => a.status === "present").length;
+  const classCount = data?.classes?.length ?? 0;
+  const totalPoints = students.reduce((sum, s) => sum + s.totalPoints, 0);
+  const recentActivities = (data?.activities ?? []).filter(a => a.date === date && visibleIds.has(a.studentId)).slice(0, 8);
+  const selectedStudent = students.find(s => String(s.id) === studentId);
+
+  const recordAttendance = (id: number, status: "present" | "absent" | "late") => addAttendance.mutate({ studentId: id, date, status });
+  const submitActivity = () => { if (!studentId || !activityTitle) return toast.error("دانش‌آموز و عنوان رویداد را انتخاب کنید"); const value = Number(points) || 0; addActivity.mutate({ studentId: Number(studentId), date, title: activityTitle, kind: activityKind, points: activityKind === "negative" ? -Math.abs(value) : Math.abs(value), description: "ثبت‌شده در دفترکلاس" }); };
+  const submitGrade = () => { if (!studentId || !gradeTitle || !score) return toast.error("اطلاعات نمره را کامل کنید"); addGrade.mutate({ studentId: Number(studentId), title: gradeTitle, score: Number(score), maxScore: Number(maxScore), date }); };
+  const submitClass = () => { if (!className) return toast.error("نام کلاس را وارد کنید"); addClass.mutate({ name: className, grade: "", schoolYear: "1405-1406" }); };
+  const submitTeam = () => { if (!teamName || !selectedClass || selectedClass === "all") return toast.error("یک کلاس را از فیلتر بالا انتخاب کنید"); addTeam.mutate({ classId: Number(selectedClass), name: teamName, color: "teal" }); };
+  const submitStudent = () => { if (!studentFirstName || !studentLastName || !studentClassId) return toast.error("نام، نام خانوادگی و کلاس را کامل کنید"); addStudent.mutate({ classId: Number(studentClassId), teamId: studentTeamId === "none" ? null : Number(studentTeamId), firstName: studentFirstName, lastName: studentLastName }); };
+
+  if (authLoading || (user && isLoading)) return <div className="min-h-screen grid place-items-center text-muted-foreground">در حال آماده‌سازی دفترکلاس…</div>;
+  if (!user) return <div dir="rtl" className="min-h-screen bg-[#f4f7f6] grid place-items-center p-6"><Card className="max-w-md w-full border-0 shadow-xl rounded-3xl"><CardContent className="p-9 text-center"><div className="h-16 w-16 mx-auto rounded-2xl bg-[#0f766e] text-white grid place-items-center shadow-lg shadow-teal-900/20"><School className="h-8 w-8" /></div><h1 className="text-2xl font-black mt-6">دفترکلاس</h1><p className="text-slate-500 mt-3 leading-7">برای مدیریت دانش‌آموزان، ثبت حضور و دریافت گزارش وارد حساب خود شوید.</p><Button onClick={() => startLogin()} className="w-full mt-7 bg-[#0f766e] hover:bg-[#0b5d57] h-11">ورود به پنل مدیریت</Button></CardContent></Card></div>;
+
+  return <div dir="rtl" className="min-h-screen bg-[#f4f7f6] text-slate-900">
+    <header className="border-b bg-white/90 backdrop-blur sticky top-0 z-20"><div className="max-w-[1440px] mx-auto px-6 h-20 flex items-center justify-between">
+      <div className="flex items-center gap-3"><div className="h-11 w-11 rounded-2xl bg-[#0f766e] text-white grid place-items-center shadow-lg shadow-teal-900/10"><School className="h-6 w-6" /></div><div><p className="font-black text-xl tracking-tight">دفترکلاس</p><p className="text-xs text-slate-500">مدیریت هوشمند کلاس شما</p></div></div>
+      <div className="flex items-center gap-3"><div className="hidden sm:block text-left"><p className="text-sm font-semibold">امروز، {faDate.format(new Date())}</p><p className="text-xs text-slate-500">یک نگاه سریع به وضعیت کلاس</p></div><div className="h-10 w-10 rounded-full bg-[#e6f4f1] text-[#0f766e] grid place-items-center font-bold">م</div></div>
+    </div></header>
+    <main className="max-w-[1440px] mx-auto p-6 space-y-7">
+      <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4"><div><p className="text-sm font-semibold text-[#0f766e] mb-2">نمای کلی کلاس</p><h1 className="text-3xl font-black tracking-tight">سلام، امروز کلاس چطور پیش می‌رود؟</h1><p className="text-slate-500 mt-2">حضور، نمره و رفتارهای روزانه را در چند کلیک ثبت کنید.</p></div><div className="flex items-center gap-2 bg-white p-2 rounded-xl border shadow-sm"><CalendarDays className="h-4 w-4 text-[#0f766e] mr-2"/><Input className="border-0 w-[135px] focus-visible:ring-0" type="date" value={date} onChange={e => setDate(e.target.value)} /><Select value={selectedClass} onValueChange={setSelectedClass}><SelectTrigger className="w-[145px] border-0 focus:ring-0"><SelectValue placeholder="همه کلاس‌ها" /></SelectTrigger><SelectContent><SelectItem value="all">همه کلاس‌ها</SelectItem>{(data?.classes ?? []).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent></Select></div></section>
+      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Stat icon={<Users />} label="دانش‌آموزان" value={String(visibleStudents.length)} hint={`${classCount} کلاس فعال`} color="teal"/><Stat icon={<Check />} label="حاضرین امروز" value={String(presentCount)} hint={`از ${visibleStudents.length} نفر`} color="blue"/><Stat icon={<Medal />} label="امتیاز کل کلاس" value={totalPoints > 0 ? `+${totalPoints}` : String(totalPoints)} hint="جمع امتیاز دانش‌آموزان" color="amber"/><Stat icon={<ClipboardList />} label="رویدادهای امروز" value={String(recentActivities.length)} hint="ثبت رفتار و فعالیت" color="violet"/></section>
+      <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_.75fr] gap-5">
+        <Card className="border-0 shadow-sm rounded-2xl overflow-hidden"><CardHeader className="bg-white border-b flex-row items-center justify-between"><div><CardTitle className="text-lg">حضور و غیاب سریع</CardTitle><p className="text-sm text-slate-500 mt-1">وضعیت هر دانش‌آموز برای {date}</p></div><Badge variant="secondary" className="bg-[#e6f4f1] text-[#0f766e]">{presentCount} حاضر</Badge></CardHeader><CardContent className="bg-white p-0"><div className="divide-y">{visibleStudents.length === 0 ? <Empty text="هنوز دانش‌آموزی ثبت نشده است" /> : visibleStudents.slice(0, 8).map(s => { const rec = todaysAttendance.find(a => a.studentId === s.id); return <div key={s.id} className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-3 min-w-0"><div className="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center font-bold text-slate-600">{s.firstName[0]}{s.lastName[0]}</div><div className="min-w-0"><p className="font-semibold truncate">{s.firstName} {s.lastName}</p><p className="text-xs text-slate-500">{s.studentCode || "بدون کد"} · {s.totalPoints >= 0 ? `+${s.totalPoints}` : s.totalPoints} امتیاز</p></div></div><div className="flex items-center gap-1.5"><QuickButton active={rec?.status === "present"} color="green" label="حاضر" onClick={() => recordAttendance(s.id, "present")} /><QuickButton active={rec?.status === "late"} color="amber" label="تأخیر" onClick={() => recordAttendance(s.id, "late")} /><QuickButton active={rec?.status === "absent"} color="red" label="غایب" onClick={() => recordAttendance(s.id, "absent")} /></div></div>})}</div></CardContent></Card>
+        <Card className="border-0 shadow-sm rounded-2xl"><CardHeader><CardTitle className="text-lg">ثبت سریع</CardTitle><p className="text-sm text-slate-500">برای دانش‌آموز انتخاب‌شده ثبت کنید</p></CardHeader><CardContent><Tabs defaultValue="activity" dir="rtl"><TabsList className="grid grid-cols-2 w-full bg-slate-100"><TabsTrigger value="activity">رویداد و امتیاز</TabsTrigger><TabsTrigger value="grade">نمره</TabsTrigger></TabsList><TabsContent value="activity" className="space-y-4 pt-4"><Field label="دانش‌آموز"><StudentSelect value={studentId} onChange={setStudentId} students={visibleStudents}/></Field><Field label="شرح رفتار یا فعالیت"><Input value={activityTitle} onChange={e => setActivityTitle(e.target.value)} placeholder="مثلاً: همکاری عالی در کار گروهی" /></Field><div className="grid grid-cols-2 gap-3"><Field label="نوع"><Select value={activityKind} onValueChange={v => setActivityKind(v as any)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="positive">مثبت</SelectItem><SelectItem value="negative">منفی</SelectItem><SelectItem value="neutral">خنثی</SelectItem></SelectContent></Select></Field><Field label="امتیاز"><Input value={points} onChange={e => setPoints(e.target.value)} type="number" /></Field></div><Button onClick={submitActivity} className="w-full bg-[#0f766e] hover:bg-[#0b5d57]">ثبت رویداد و امتیاز <Sparkles className="mr-2 h-4 w-4"/></Button></TabsContent><TabsContent value="grade" className="space-y-4 pt-4"><Field label="دانش‌آموز"><StudentSelect value={studentId} onChange={setStudentId} students={visibleStudents}/></Field><Field label="عنوان ارزیابی"><Input value={gradeTitle} onChange={e => setGradeTitle(e.target.value)} placeholder="مثلاً: آزمون فصل سوم" /></Field><div className="grid grid-cols-2 gap-3"><Field label="نمره کسب‌شده"><Input value={score} onChange={e => setScore(e.target.value)} type="number" placeholder="18" /></Field><Field label="از"><Input value={maxScore} onChange={e => setMaxScore(e.target.value)} type="number" /></Field></div><Button onClick={submitGrade} className="w-full bg-[#1d4ed8] hover:bg-[#1e40af]">ثبت نمره <Plus className="mr-2 h-4 w-4"/></Button></TabsContent></Tabs>{selectedStudent && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">دانش‌آموز انتخاب‌شده: <b>{selectedStudent.firstName} {selectedStudent.lastName}</b></p>}</CardContent></Card>
+      </div>
+      <section className="grid grid-cols-1 xl:grid-cols-[.85fr_1.15fr] gap-5"><Card className="border-0 shadow-sm rounded-2xl"><CardHeader><CardTitle className="text-lg">تیم‌های کلاس</CardTitle><p className="text-sm text-slate-500">رتبه‌بندی بر اساس امتیاز</p></CardHeader><CardContent className="space-y-3">{(data?.teams ?? []).length === 0 ? <Empty text="هنوز تیمی ساخته نشده است" /> : [...(data?.teams ?? [])].sort((a,b) => b.totalPoints-a.totalPoints).slice(0,5).map((t, i) => <div key={t.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50"><div className="flex items-center gap-3"><span className="h-8 w-8 rounded-lg bg-white grid place-items-center font-black text-sm text-slate-500">{i+1}</span><div><p className="font-semibold">{t.name}</p><p className="text-xs text-slate-500">کلاس #{t.classId}</p></div></div><span className={`font-black ${t.totalPoints >= 0 ? "text-[#0f766e]" : "text-red-500"}`}>{t.totalPoints >= 0 ? "+" : ""}{t.totalPoints}</span></div>)}</CardContent></Card><Card className="border-0 shadow-sm rounded-2xl"><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-lg">گزارش فعالیت امروز</CardTitle><p className="text-sm text-slate-500">آخرین ثبت‌های {date}</p></div><Button variant="outline" size="sm">گزارش کامل <ClipboardList className="mr-2 h-4 w-4"/></Button></CardHeader><CardContent>{recentActivities.length === 0 ? <Empty text="برای امروز رویدادی ثبت نشده است" /> : <div className="space-y-2">{recentActivities.map(a => { const s = students.find(x => x.id === a.studentId); const positive = a.kind === "positive"; return <div key={a.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3"><div className="flex items-center gap-3"><div className={`h-9 w-9 rounded-lg grid place-items-center ${positive ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>{positive ? <TrendingUp className="h-4 w-4"/> : <TrendingDown className="h-4 w-4"/>}</div><div><p className="font-semibold text-sm">{a.title}</p><p className="text-xs text-slate-500">{s ? `${s.firstName} ${s.lastName}` : "دانش‌آموز"}</p></div></div><span className={`font-bold text-sm ${a.points >= 0 ? "text-emerald-600" : "text-red-500"}`}>{a.points >= 0 ? "+" : ""}{a.points}</span></div>})}</div>}</CardContent></Card></section>
+      <section><Card className="border-0 shadow-sm rounded-2xl"><CardHeader><CardTitle className="text-lg">مدیریت کلاس، تیم و دانش‌آموز</CardTitle><p className="text-sm text-slate-500">ساختار کلاس را یک‌بار تعریف کنید تا همه‌ی گزارش‌ها منظم باشند.</p></CardHeader><CardContent className="grid grid-cols-1 md:grid-cols-3 gap-5"><div className="space-y-3"><p className="font-bold text-sm">ساخت کلاس جدید</p><Input value={className} onChange={e => setClassName(e.target.value)} placeholder="مثلاً کلاس هفتم الف" /><Button onClick={submitClass} variant="outline" className="w-full">افزودن کلاس <Plus className="mr-2 h-4 w-4" /></Button></div><div className="space-y-3"><p className="font-bold text-sm">ساخت تیم</p><Input value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="مثلاً تیم ستاره‌ها" /><Button onClick={submitTeam} variant="outline" className="w-full">افزودن به کلاس انتخاب‌شده <Plus className="mr-2 h-4 w-4" /></Button></div><div className="space-y-3"><p className="font-bold text-sm">افزودن دانش‌آموز</p><div className="grid grid-cols-2 gap-2"><Input value={studentFirstName} onChange={e => setStudentFirstName(e.target.value)} placeholder="نام" /><Input value={studentLastName} onChange={e => setStudentLastName(e.target.value)} placeholder="نام خانوادگی" /></div><div className="grid grid-cols-2 gap-2"><Select value={studentClassId} onValueChange={setStudentClassId}><SelectTrigger><SelectValue placeholder="کلاس" /></SelectTrigger><SelectContent>{(data?.classes ?? []).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent></Select><Select value={studentTeamId} onValueChange={setStudentTeamId}><SelectTrigger><SelectValue placeholder="تیم" /></SelectTrigger><SelectContent><SelectItem value="none">بدون تیم</SelectItem>{(data?.teams ?? []).map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent></Select></div><Button onClick={submitStudent} variant="outline" className="w-full">ثبت دانش‌آموز <Plus className="mr-2 h-4 w-4" /></Button></div></CardContent></Card></section>
+    </main>
+  </div>;
 }
+function Stat({ icon, label, value, hint, color }: any) { const colors: any = { teal: "bg-teal-50 text-teal-700", blue: "bg-blue-50 text-blue-700", amber: "bg-amber-50 text-amber-700", violet: "bg-violet-50 text-violet-700" }; return <Card className="border-0 shadow-sm rounded-2xl"><CardContent className="p-5 flex items-center gap-4"><div className={`h-12 w-12 rounded-2xl grid place-items-center ${colors[color]}`}>{icon}</div><div><p className="text-sm text-slate-500">{label}</p><p className="text-2xl font-black mt-1">{value}</p><p className="text-xs text-slate-400 mt-1">{hint}</p></div></CardContent></Card> }
+function Field({ label, children }: any) { return <div className="space-y-2"><Label className="text-xs font-semibold text-slate-600">{label}</Label>{children}</div> }
+function StudentSelect({ value, onChange, students }: any) { return <Select value={value} onValueChange={onChange}><SelectTrigger><SelectValue placeholder="انتخاب دانش‌آموز" /></SelectTrigger><SelectContent>{students.map((s: any) => <SelectItem key={s.id} value={String(s.id)}>{s.firstName} {s.lastName}</SelectItem>)}</SelectContent></Select> }
+function QuickButton({ active, color, label, onClick }: any) { const map: any = { green: active ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100", amber: active ? "bg-amber-500 text-white" : "bg-amber-50 text-amber-700 hover:bg-amber-100", red: active ? "bg-red-500 text-white" : "bg-red-50 text-red-600 hover:bg-red-100" }; return <button onClick={onClick} className={`text-[11px] font-bold rounded-lg px-2 py-1.5 transition-colors ${map[color]}`}>{label}</button> }
+function Empty({ text }: { text: string }) { return <div className="p-8 text-center text-sm text-slate-400"><X className="h-5 w-5 mx-auto mb-2 opacity-50"/>{text}</div> }
