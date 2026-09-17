@@ -80,10 +80,10 @@ export default function Home() {
   const visibleIds = useMemo(() => new Set(visibleStudents.map(s => s.id)), [visibleStudents]);
   const visibleTeams = selectedClass === "all" ? teams : teams.filter(t => String(t.classId) === selectedClass);
   const attendanceIds = useMemo(() => new Set(attendanceStudents.map(s => s.id)), [attendanceStudents]);
-  const todaysAttendance = (data?.attendance ?? []).filter(a => a.date === date && attendanceIds.has(a.studentId));
+  const todaysAttendance = (data?.attendance ?? []).filter(a => String(a.date).slice(0, 10) === date && attendanceIds.has(a.studentId));
   const presentCount = todaysAttendance.filter(a => a.status === "present").length;
   const totalPoints = students.reduce((sum, s) => sum + s.totalPoints, 0);
-  const dateActivities = (data?.activities ?? []).filter(a => a.date === date);
+  const dateActivities = (data?.activities ?? []).filter(a => String(a.date).slice(0, 10) === date);
   const recentActivities = dateActivities.filter(a => a.studentId === null ? visibleTeams.some(t => t.id === a.teamId) : visibleIds.has(a.studentId)).slice(0, 10);
   const activeReportClassId = reportClassId || defaultClassId;
   const reportClassStudents = students.filter(s => String(s.classId) === activeReportClassId);
@@ -91,7 +91,7 @@ export default function Home() {
   const reportStudentIds = new Set(reportClassStudents.map(s => s.id));
   const activeReportStudentId = reportStudentId || (reportClassStudents[0] ? String(reportClassStudents[0].id) : "");
   const reportTeamIds = new Set(reportClassTeams.map(t => t.id));
-  const reportRows = dateActivities.filter(a => reportScope === "class" ? (a.studentId !== null ? reportStudentIds.has(a.studentId) : (a.teamId !== null && reportTeamIds.has(a.teamId))) : reportScope === "team" ? a.teamId === Number(reportTeamId) : a.studentId === Number(reportStudentId));
+  const reportRows = dateActivities.filter(a => reportScope === "class" ? (a.studentId !== null ? reportStudentIds.has(a.studentId) : (a.teamId !== null && reportTeamIds.has(a.teamId))) : reportScope === "team" ? (String(a.teamId) === reportTeamId || (a.studentId !== null && students.some(s => s.id === a.studentId && String(s.teamId) === reportTeamId))) : String(a.studentId) === activeReportStudentId);
   const selectedReportTeam = teams.find(t => t.id === Number(reportTeamId));
   const selectedTeamTodayPoints = reportRows.reduce((sum, row) => sum + row.points, 0);
   const selectedStudent = students.find(s => String(s.id) === studentId);
