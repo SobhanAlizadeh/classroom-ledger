@@ -183,7 +183,9 @@
   body { background: white !important; overflow: visible !important; }
   .app-shell > header, .app-shell > main > * { display: none !important; }
   .app-shell > main { display: block !important; max-width: none !important; padding: 0 !important; margin: 0 !important; }
-  .app-shell > main > #print-report { display: block !important; }
+  .app-shell > main > .report-layout { display: block !important; }
+  .app-shell > main > .report-layout > * { display: none !important; }
+  .app-shell > main > .report-layout > #print-report { display: block !important; }
   body * { visibility: hidden !important; }
   #print-report, #print-report * { visibility: visible !important; }
   #print-report { position: absolute !important; top: 0 !important; left: 0 !important; right: 0 !important; width: 100% !important; margin: 0 !important; box-shadow: none !important; border: 0 !important; overflow: visible !important; }
