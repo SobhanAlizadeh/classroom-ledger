@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
-import { getDashboardData, createSchool, updateSchool, deleteSchool, createClass, createTeam, createStudent, saveAttendance, saveGrade, saveActivity, saveTeamActivity, updateClass, updateTeam, updateStudent, deleteClass, deleteTeam, deleteStudent, createSubject } from "./db";
+import { getDashboardData, createSchool, updateSchool, deleteSchool, createClass, createTeam, createStudent, saveAttendance, saveGrade, saveActivity, saveTeamActivity, updateClass, updateTeam, updateStudent, deleteClass, deleteTeam, deleteStudent, createSubject, updateSubject, deleteSubject, consumeStudentPoints, consumeTeamPoints } from "./db";
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const appRouter = router({
   system: systemRouter,
@@ -18,8 +18,12 @@ export const appRouter = router({
     addStudent: protectedProcedure.input(z.object({ classId: z.number(), teamId: z.number().nullable().optional(), firstName: z.string().min(1), lastName: z.string().min(1), studentCode: z.string().optional() })).mutation(({ input }) => createStudent(input)),
     attendance: protectedProcedure.input(z.object({ studentId: z.number(), date, status: z.enum(["present", "absent", "late", "excused"]), note: z.string().optional() })).mutation(({ input }) => saveAttendance(input)),
     addSubject: protectedProcedure.input(z.object({ classId: z.number(), name: z.string().min(1) })).mutation(({ input }) => createSubject(input)),
+    updateSubject: protectedProcedure.input(z.object({ id: z.number(), classId: z.number(), name: z.string().min(1) })).mutation(({ input }) => updateSubject(input)),
+    deleteSubject: protectedProcedure.input(z.object({ id: z.number() })).mutation(({ input }) => deleteSubject(input.id)),
     grade: protectedProcedure.input(z.object({ studentId: z.number(), subjectId: z.number().nullable().optional(), title: z.string().min(1), score: z.number().min(0), maxScore: z.number().positive(), date, note: z.string().optional() })).mutation(({ input }) => saveGrade(input)),
     activity: protectedProcedure.input(z.object({ studentId: z.number(), date, title: z.string().min(1), description: z.string().optional(), kind: z.enum(["positive", "negative", "neutral"]), points: z.number().int() })).mutation(({ input }) => saveActivity(input)),
+    spendStudent: protectedProcedure.input(z.object({ studentId: z.number(), date, description: z.string().min(1), points: z.number().positive() })).mutation(({ input }) => consumeStudentPoints(input)),
+    spendTeam: protectedProcedure.input(z.object({ teamId: z.number(), date, description: z.string().min(1), points: z.number().positive() })).mutation(({ input }) => consumeTeamPoints(input)),
     teamActivity: protectedProcedure.input(z.object({ teamId: z.number(), date, title: z.string().min(1), description: z.string().optional(), kind: z.enum(["positive", "negative", "neutral"]), points: z.number().int() })).mutation(({ input }) => saveTeamActivity(input)),
     updateClass: protectedProcedure.input(z.object({ id: z.number(), schoolId: z.number().nullable().optional(), name: z.string().min(1), grade: z.string().optional(), schoolYear: z.string().optional() })).mutation(({ input }) => updateClass(input)),
     updateTeam: protectedProcedure.input(z.object({ id: z.number(), name: z.string().min(1), color: z.string().optional() })).mutation(({ input }) => updateTeam(input)),
