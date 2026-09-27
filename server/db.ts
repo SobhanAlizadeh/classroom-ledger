@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, schools, classes, teams, students, attendance, subjects, grades, activities } from "../drizzle/schema";
+import { InsertUser, users, schools, classes, teams, students, attendance, subjects, grades, activities, studentTeamTransfers } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { sql } from "drizzle-orm";
 
@@ -8,8 +8,20 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() { if (!_db && process.env.DATABASE_URL) { try { _db = drizzle(process.env.DATABASE_URL); } catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; } } return _db; }
 export async function upsertUser(user: InsertUser): Promise<void> { if (!user.openId) throw new Error("User openId is required for upsert"); const db = await getDb(); if (!db) return; const values: InsertUser = { openId: user.openId }; const updateSet: Record<string, unknown> = {}; for (const field of ["name", "email", "loginMethod"] as const) { if (user[field] !== undefined) { values[field] = user[field] ?? null; updateSet[field] = user[field] ?? null; } } if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; } if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; } else if (user.openId === ENV.ownerOpenId) { values.role = 'admin'; updateSet.role = 'admin'; } values.lastSignedIn ??= new Date(); if (!Object.keys(updateSet).length) updateSet.lastSignedIn = new Date(); await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet }); }
 export async function getUserByOpenId(openId: string) { const db = await getDb(); if (!db) return undefined; const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1); return result[0]; }
-export function distributeTeamPoints(total: number, memberCount: number) { const count = Math.max(memberCount, 1); const base = Math.trunc(total / count); const remainder = total - base * count; return Array.from({ length: memberCount }, (_, index) => base + (index < Math.abs(remainder) ? Math.sign(remainder) : 0)); }
-export async function getDashboardData() { const db = await getDb(); if (!db) return { schools: [], classes: [], teams: [], students: [], attendance: [], subjects: [], grades: [], activities: [] }; const [schoolRows, classRows, teamRows, studentRows, attendanceRows, subjectRows, gradeRows, activityRows] = await Promise.all([db.select().from(schools), db.select().from(classes), db.select().from(teams), db.select().from(students), db.select().from(attendance).orderBy(desc(attendance.date), desc(attendance.id)).limit(200), db.select().from(subjects).orderBy(desc(subjects.id)).limit(200), db.select().from(grades).orderBy(desc(grades.date)).limit(200), db.select().from(activities).orderBy(desc(activities.date), desc(activities.id)).limit(200)]); const uniqueAttendanceRows = attendanceRows.filter((row, index, rows) => index === rows.findIndex(other => other.studentId === row.studentId && other.date === row.date)); return { schools: schoolRows, classes: classRows, teams: teamRows, students: studentRows, attendance: uniqueAttendanceRows, subjects: subjectRows, grades: gradeRows, activities: activityRows }; }
+export function distributeTeamPoints(total: number, memberCount: number) {
+  if (memberCount <= 0) return [];
+  if (Number.isInteger(total)) {
+    const base = Math.trunc(total / memberCount);
+    const remainder = total - base * memberCount;
+    return Array.from({ length: memberCount }, (_, index) => base + (index < Math.abs(remainder) ? Math.sign(remainder) : 0));
+  }
+  const precision = 100;
+  const scaledTotal = Math.round(total * precision);
+  const baseScaled = Math.trunc(scaledTotal / memberCount);
+  const remainderScaled = scaledTotal - baseScaled * memberCount;
+  return Array.from({ length: memberCount }, (_, index) => (baseScaled + (index < Math.abs(remainderScaled) ? Math.sign(remainderScaled) : 0)) / precision);
+}
+export async function getDashboardData() { const db = await getDb(); if (!db) return { schools: [], classes: [], teams: [], students: [], attendance: [], subjects: [], grades: [], activities: [] }; const [schoolRows, classRows, teamRows, studentRows, attendanceRows, subjectRows, gradeRows, activityRows, transferRows] = await Promise.all([db.select().from(schools), db.select().from(classes), db.select().from(teams), db.select().from(students), db.select().from(attendance).orderBy(desc(attendance.date), desc(attendance.id)).limit(200), db.select().from(subjects).orderBy(desc(subjects.id)).limit(200), db.select().from(grades).orderBy(desc(grades.date)).limit(200), db.select().from(activities).orderBy(desc(activities.date), desc(activities.id)).limit(200), db.select().from(studentTeamTransfers).orderBy(desc(studentTeamTransfers.createdAt), desc(studentTeamTransfers.id)).limit(200)]); const uniqueAttendanceRows = attendanceRows.filter((row, index, rows) => index === rows.findIndex(other => other.studentId === row.studentId && other.date === row.date)); return { schools: schoolRows, classes: classRows, teams: teamRows, students: studentRows, attendance: uniqueAttendanceRows, subjects: subjectRows, grades: gradeRows, activities: activityRows, teamTransfers: transferRows }; }
 export async function createSchool(input: { name: string; address?: string }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.insert(schools).values(input); }
 export async function updateSchool(input: { id: number; name: string; address?: string }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.update(schools).set({ name: input.name, address: input.address }).where(eq(schools.id, input.id)); }
 export async function deleteSchool(id: number) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); const classRows = await db.select({ id: classes.id }).from(classes).where(eq(classes.schoolId, id)); for (const row of classRows) await deleteClass(row.id); await db.delete(schools).where(eq(schools.id, id)); }
@@ -18,7 +30,37 @@ export async function createTeam(input: { classId: number; name: string; color?:
 export async function createClass(input: { schoolId?: number | null; name: string; grade?: string; schoolYear?: string }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.insert(classes).values(input); }
 export async function updateClass(input: { id: number; schoolId?: number | null; name: string; grade?: string; schoolYear?: string }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.update(classes).set({ schoolId: input.schoolId, name: input.name, grade: input.grade, schoolYear: input.schoolYear }).where(eq(classes.id, input.id)); }
 export async function updateTeam(input: { id: number; name: string; color?: string }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.update(teams).set({ name: input.name, color: input.color }).where(eq(teams.id, input.id)); }
-export async function updateStudent(input: { id: number; classId: number; teamId?: number | null; firstName: string; lastName: string; studentCode?: string }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.update(students).set({ classId: input.classId, teamId: input.teamId, firstName: input.firstName, lastName: input.lastName, studentCode: input.studentCode }).where(eq(students.id, input.id)); }
+export function calculateStudentTeamTransfer(input: { oldTeamId?: number | null; newTeamId?: number | null; studentClassId: number; targetClassId: number; studentPoints: number; newTeamClassId?: number }) {
+  const oldTeamId = input.oldTeamId ?? null;
+  const newTeamId = input.newTeamId ?? null;
+  if (newTeamId !== null && input.newTeamClassId !== input.targetClassId) throw new Error("تیم انتخاب‌شده متعلق به کلاس جدید نیست");
+  return { fromTeamId: oldTeamId, toTeamId: newTeamId, movedPoints: Number(input.studentPoints) || 0, changed: oldTeamId !== newTeamId };
+}
+
+export async function updateStudent(input: { id: number; classId: number; teamId?: number | null; firstName: string; lastName: string; studentCode?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  return db.transaction(async tx => {
+    const current = await tx.select().from(students).where(eq(students.id, input.id)).limit(1);
+    if (!current[0]) throw new Error("دانش‌آموز پیدا نشد");
+    const oldTeamId = current[0].teamId ?? null;
+    const newTeamId = input.teamId ?? null;
+    let newTeam: { id: number; classId: number } | undefined;
+    if (newTeamId !== null) {
+      const teamRows = await tx.select({ id: teams.id, classId: teams.classId }).from(teams).where(eq(teams.id, newTeamId)).limit(1);
+      newTeam = teamRows[0];
+    }
+    const transfer = calculateStudentTeamTransfer({ oldTeamId, newTeamId, studentClassId: current[0].classId, targetClassId: input.classId, studentPoints: Number(current[0].totalPoints ?? 0), newTeamClassId: newTeam?.classId });
+    if (newTeamId !== null && !newTeam) throw new Error("تیم انتخاب‌شده پیدا نشد");
+    if (transfer.changed) {
+      const movedPoints = transfer.movedPoints;
+      if (oldTeamId !== null && movedPoints !== 0) await tx.update(teams).set({ totalPoints: sql`${teams.totalPoints} - ${movedPoints}` }).where(eq(teams.id, oldTeamId));
+      if (newTeamId !== null && movedPoints !== 0) await tx.update(teams).set({ totalPoints: sql`${teams.totalPoints} + ${movedPoints}` }).where(eq(teams.id, newTeamId));
+      await tx.insert(studentTeamTransfers).values({ studentId: input.id, fromTeamId: oldTeamId, toTeamId: newTeamId, movedPoints, date: new Date().toISOString().slice(0, 10) });
+    }
+    await tx.update(students).set({ classId: input.classId, teamId: newTeamId, firstName: input.firstName, lastName: input.lastName, studentCode: input.studentCode }).where(eq(students.id, input.id));
+  });
+}
 export async function deleteClass(id: number) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); const memberRows = await db.select({ id: students.id }).from(students).where(eq(students.classId, id)); const teamRows = await db.select({ id: teams.id }).from(teams).where(eq(teams.classId, id)); for (const row of memberRows) await deleteStudent(row.id); for (const row of teamRows) await db.delete(activities).where(eq(activities.teamId, row.id)); await db.delete(teams).where(eq(teams.classId, id)); await db.delete(classes).where(eq(classes.id, id)); }
 export async function deleteTeam(id: number) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.update(students).set({ teamId: null }).where(eq(students.teamId, id)); await db.delete(activities).where(eq(activities.teamId, id)); await db.delete(teams).where(eq(teams.id, id)); }
 export async function deleteStudent(id: number) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.delete(attendance).where(eq(attendance.studentId, id)); await db.delete(grades).where(eq(grades.studentId, id)); await db.delete(activities).where(eq(activities.studentId, id)); await db.delete(students).where(eq(students.id, id)); }

@@ -191,6 +191,36 @@
   .app-shell main.space-y-7 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
 }
 
+/* Theme-aware overrides for the dashboard's visual surfaces. */
+.dark .app-shell { background: oklch(0.145 0.012 175) !important; color: var(--foreground); }
+.dark .app-shell header { background: oklch(0.19 0.014 175 / 0.94) !important; border-color: oklch(1 0 0 / 12%) !important; }
+.dark .app-shell .bg-white,
+.dark .app-shell .bg-white\/90 { background-color: oklch(0.205 0.014 175) !important; }
+.dark .app-shell .bg-slate-50 { background-color: oklch(0.24 0.014 175) !important; }
+.dark .app-shell .bg-slate-100 { background-color: oklch(0.27 0.014 175) !important; }
+.dark .app-shell .bg-teal-50 { background-color: oklch(0.25 0.055 175) !important; }
+.dark .app-shell .bg-amber-50 { background-color: oklch(0.27 0.055 75) !important; }
+.dark .app-shell .bg-blue-50 { background-color: oklch(0.25 0.045 255) !important; }
+.dark .app-shell .bg-violet-50 { background-color: oklch(0.25 0.045 300) !important; }
+.dark .app-shell .bg-\[\#f4f7f6\] { background-color: oklch(0.145 0.012 175) !important; }
+.dark .app-shell .bg-\[\#e6f4f1\] { background-color: oklch(0.25 0.055 175) !important; }
+.dark .app-shell .text-slate-900,
+.dark .app-shell .text-slate-800,
+.dark .app-shell .text-slate-700 { color: oklch(0.93 0.01 175) !important; }
+.dark .app-shell .text-slate-600,
+.dark .app-shell .text-slate-500 { color: oklch(0.75 0.018 175) !important; }
+.dark .app-shell .text-slate-400 { color: oklch(0.64 0.018 175) !important; }
+.dark .app-shell input,
+.dark .app-shell textarea,
+.dark .app-shell [data-slot="select-trigger"] { background-color: oklch(0.18 0.012 175) !important; color: oklch(0.93 0.01 175) !important; border-color: oklch(1 0 0 / 18%) !important; }
+.dark .app-shell input::placeholder,
+.dark .app-shell textarea::placeholder { color: oklch(0.62 0.018 175) !important; }
+.dark .app-shell .border-slate-100,
+.dark .app-shell .border-slate-200 { border-color: oklch(1 0 0 / 14%) !important; }
+.dark .app-shell .shadow-sm,
+.dark .app-shell .shadow-lg { box-shadow: 0 8px 30px oklch(0 0 0 / 22%) !important; }
+.dark .app-shell .mobile-panel-nav button:not(.bg-\[\#0f766e\]) { color: oklch(0.78 0.015 175) !important; }
+
 @media print {
   @page { size: auto; margin: 10mm; }
   html, body, #root { height: auto !important; min-height: 0 !important; }
